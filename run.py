@@ -48,6 +48,7 @@ def main(cfg):
     logger.info("device: {}, n_gpu: {}".format(device, n_gpu))
     logger.info(cfg)
 
+    logger.info("*****data set*****")
     df_train = pd.read_csv(cfg.data.train_csv, nrows=5000 if cfg.test.test else None)
     ds_train = CellDataset(cfg.data.train_path, df_train, resize=False, transforms=get_transform(train=True, cfg=cfg), cfg=cfg)
     dl_train = DataLoader(ds_train, batch_size=cfg.train.batch_size, shuffle=True, collate_fn=lambda x: tuple(zip(*x)))
@@ -72,6 +73,7 @@ def main(cfg):
 
     n_batches = len(dl_train)
 
+    logger.info("*****Training*****")
     for epoch in range(1, cfg.train.num_epochs + 1):
         logger.info(f"Starting epoch {epoch} of {cfg.train.num_epochs}")
         
@@ -121,6 +123,7 @@ def main(cfg):
 
     model.eval()
 
+    logger.info("*****Prediction*****")
     submission = []
     for sample in ds_test:
         img = sample['image']
@@ -157,7 +160,7 @@ def main(cfg):
     writer.log_artifact(os.path.join(os.getcwd(), '.hydra/config.yaml'))
     writer.log_artifact(os.path.join(os.getcwd(), '.hydra/hydra.yaml'))
     writer.log_artifact(os.path.join(os.getcwd(), '.hydra/overrides.yaml'))
-    writer.log_artifact(os.path.join(os.getcwd(), 'main.log'))
+    writer.log_artifact(os.path.join(os.getcwd(), 'run.log'))
 
 if __name__ == "__main__":
     main()
