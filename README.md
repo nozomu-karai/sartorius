@@ -19,6 +19,6 @@ pip install -r requirements.txt
 ### Executing program
 
 ```
-python run.py
+python run.py data.output_dir={}
 ```
 
