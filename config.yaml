@@ -5,6 +5,9 @@ data:
   test_path: "../data/sartorius-cell-instance-segmentation/test"
   width: 704
   height: 520
+  normalize: False
+  resnet_mean: (0.485, 0.456, 0.406)
+  resnet_std: (0.229, 0.224, 0.225)
 model:
   box_detections_per_img: 539
   num_classes: 2

@@ -2,7 +2,7 @@ import os
 import time
 import random
 import collections
-from logging import getLogger, FileHandler, basicConfig, INFO
+from logging import getLogger, FileHandler, StreamHandler, INFO, DEBUG, Formatter
 from tqdm import tqdm
 
 import numpy as np
@@ -25,25 +25,37 @@ import hydra
 import mlflow
 import warnings
 warnings.filterwarnings('ignore')
-basicConfig(format='[%(levelname)s] %(asctime)s >>\t%(message)s',
-                    datefmt='%m/%d/%Y %H:%M:%S',
-                    level=INFO)
 logger = getLogger(__name__)
+logger.setLevel(DEBUG)
+fmr = Formatter("[%(levelname)s] %(asctime)s >>\t%(message)s")
+ch = StreamHandler()
+ch.setLevel(INFO)
+ch.setFormatter(fmr)
+logger.addHandler(ch)
 
 @hydra.main(config_name="config.yaml")
 def main(cfg):
+    cwd = hydra.utils.get_original_cwd()
+    cfg.data.output_dir = os.path.join(cwd, cfg.data.output_dir)
+    cfg.data.train_csv = os.path.join(cwd, cfg.data.train_csv)
+    cfg.data.train_path = os.path.join(cwd, cfg.data.train_path)
+    cfg.data.test_path = os.path.join(cwd, cfg.data.test_path)
+    if not os.path.exists(cfg.data.output_dir):
+        os.makedirs(cfg.data.output_dir)
     fix_all_seeds(2021)
-    logger.addHandler(FileHandler(os.path.join(cfg.data.output_dir, "run.log"), 'w'))
+    fh = FileHandler(os.path.join(cfg.data.output_dir, "run.log"), 'w')
+    fh.setLevel(INFO)
+    fh.setFormatter(fmr)
+    logger.addHandler(fh)
 
     device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
     n_gpu = torch.cuda.device_count()
     logger.info("device: {}, n_gpu: {}".format(device, n_gpu))
-    logger.info(cfg.pretty())
+    logger.info(cfg)
 
     df_train = pd.read_csv(cfg.data.train_csv, nrows=5000 if cfg.test.test else None)
     ds_train = CellDataset(cfg.data.train_path, df_train, resize=False, transforms=get_transform(train=True, cfg=cfg), cfg=cfg)
-    dl_train = DataLoader(ds_train, batch_size=cfg.train.batch_size, shuffle=True, 
-                      num_workers=2, collate_fn=lambda x: tuple(zip(*x)))
+    dl_train = DataLoader(ds_train, batch_size=cfg.train.batch_size, shuffle=True, collate_fn=lambda x: tuple(zip(*x)))
     
     model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True, box_detections_per_img=cfg.model.box_detections_per_img)
     # get the number of input features for the classifier
@@ -59,7 +71,7 @@ def main(cfg):
         param.requires_grad = True
 
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=cfg.train.learning_rate, momentum=cfg.train.momentun, weight_decay=cfg.train.weight_decay)
+    optimizer = torch.optim.SGD(params, lr=cfg.train.learning_rate, momentum=cfg.train.momentum, weight_decay=cfg.train.weight_decay)
 
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
@@ -73,7 +85,7 @@ def main(cfg):
         loss_mask_accum = 0.0
 
         train_bar = tqdm(dl_train)
-        for batch_idx, (images, targets) in enumerate(train_bar, 1):
+        for batch_idx, (images, targets) in enumerate(train_bar):
         
             # Predict
             images = list(image.to(device) for image in images)

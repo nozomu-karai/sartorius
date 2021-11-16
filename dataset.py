@@ -21,10 +21,10 @@ class CellDataset(Dataset):
         self.should_resize = resize is not False
         if self.should_resize:
             self.height = int(cfg.data.height * resize)
-            self.width = int(cfg.data.height * resize)
+            self.width = int(cfg.data.width * resize)
         else:
             self.height = cfg.data.height
-            self.width = cfg.data.height
+            self.width = cfg.data.width
         
         self.image_info = collections.defaultdict(dict)
         temp_df = self.df.groupby('id')['annotation'].agg(lambda x: list(x)).reset_index()
