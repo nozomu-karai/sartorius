@@ -114,7 +114,8 @@ def main(cfg):
         
         elapsed = time.time() - time_start
         
-        torch.save(model.state_dict(), os.path.join(cfg.data.output_dir, f"pytorch_model-e{epoch}.bin"))
+        model_to_save = model.module if hasattr(model, 'module') else model
+        torch.save(model_to_save.state_dict(), os.path.join(cfg.data.output_dir, f"pytorch_model-e{epoch}.bin"))
         prefix = f"[Epoch {epoch:2d} / {cfg.train.num_epochs:2d}]"
         logger.info(f"{prefix} Train mask-only loss: {train_loss_mask:7.3f}")
         logger.info(f"{prefix} Train loss: {train_loss:7.3f}. [{elapsed:.0f} secs]")
