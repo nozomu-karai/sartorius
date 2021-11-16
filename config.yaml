@@ -1,8 +1,8 @@
 data:
   output_dir: ???
-  train_csv: "../data/sartorius-cell-instance-segmentation/train.csv"
-  train_path: "../data/sartorius-cell-instance-segmentation/train"
-  test_path: "../data/sartorius-cell-instance-segmentation/test"
+  train_csv: "../data/train.csv"
+  train_path: "../data/train"
+  test_path: "../data/test"
   width: 704
   height: 520
   normalize: False

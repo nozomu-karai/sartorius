@@ -26,12 +26,7 @@ import mlflow
 import warnings
 warnings.filterwarnings('ignore')
 logger = getLogger(__name__)
-logger.setLevel(DEBUG)
 fmr = Formatter("[%(levelname)s] %(asctime)s >>\t%(message)s")
-ch = StreamHandler()
-ch.setLevel(INFO)
-ch.setFormatter(fmr)
-logger.addHandler(ch)
 
 @hydra.main(config_name="config.yaml")
 def main(cfg):
@@ -122,7 +117,7 @@ def main(cfg):
         logger.info(f"{prefix} Train mask-only loss: {train_loss_mask:7.3f}")
         logger.info(f"{prefix} Train loss: {train_loss:7.3f}. [{elapsed:.0f} secs]")
 
-    ds_test = CellTestDataset(cfg.data.test_path, transforms=get_transform(train=False, cfg=cfg), cfg=cfg)
+    ds_test = CellTestDataset(cfg.data.test_path, transforms=get_transform(train=False, cfg=cfg))
 
     model.eval()
 
