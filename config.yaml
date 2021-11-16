@@ -1,7 +1,21 @@
-db:
-  driver: postgresql
-  pass: drowssap
-  timeout: 20
-  user: postgre_user
+data:
+  output_dir: ???
+  train_csv: "../data/sartorius-cell-instance-segmentation/train.csv"
+  train_path: "../data/sartorius-cell-instance-segmentation/train"
+  test_path: "../data/sartorius-cell-instance-segmentation/test"
+  width: 704
+  height: 520
 model:
-  batch: 16
+  box_detections_per_img: 539
+  num_classes: 2
+train:
+  batch_size: 2
+  num_epochs: 8
+  learning_rate: 0.001
+  momentum: 0.9
+  weight_decay: 0.0005
+  use_scheduler: False
+test:
+  test: False
+  min_score: 0.59
+  mask_threshold: 0.5

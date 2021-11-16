@@ -19,7 +19,7 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 from dataset import CellDataset, CellTestDataset, get_transform
-from utils import fix_all_seeds, rle_encoding, remove_overlapping_pixels
+from utils import fix_all_seeds, rle_encoding, remove_overlapping_pixels, MlflowWriter
 
 import hydra
 import mlflow
@@ -32,13 +32,16 @@ logger = getLogger(__name__)
 
 @hydra.main(config_name="config.yaml")
 def main(cfg):
-    cwd = hydra.utils.get_original_cwd()
-    cfg.data.output_dir = os.path.join(cwd, cfg.data.output_dir)
     fix_all_seeds(2021)
-    logger.addHandler(FileHandler(os.path.join(cfg.data.output_dir, "train.log"), 'w'))
+    logger.addHandler(FileHandler(os.path.join(cfg.data.output_dir, "run.log"), 'w'))
+
+    device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
+    n_gpu = torch.cuda.device_count()
+    logger.info("device: {}, n_gpu: {}".format(device, n_gpu))
+    logger.info(cfg.pretty())
 
     df_train = pd.read_csv(cfg.data.train_csv, nrows=5000 if cfg.test.test else None)
-    ds_train = CellDataset(cfg.data.train_path, df_train, resize=False, transforms=get_transform(train=True))
+    ds_train = CellDataset(cfg.data.train_path, df_train, resize=False, transforms=get_transform(train=True, cfg=cfg), cfg=cfg)
     dl_train = DataLoader(ds_train, batch_size=cfg.train.batch_size, shuffle=True, 
                       num_workers=2, collate_fn=lambda x: tuple(zip(*x)))
     
@@ -48,7 +51,9 @@ def main(cfg):
     # replace the pre-trained head with a new one
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, cfg.model.num_classes)
 
-    model.to(DEVICE)
+    model.to(device)
+    if n_gpu > 1:
+        model = torch.nn.DataParallel(model)
 
     for param in model.parameters():
         param.requires_grad = True
@@ -71,11 +76,13 @@ def main(cfg):
         for batch_idx, (images, targets) in enumerate(train_bar, 1):
         
             # Predict
-            images = list(image.to(DEVICE) for image in images)
-            targets = [{k: v.to(DEVICE) for k, v in t.items()} for t in targets]
+            images = list(image.to(device) for image in images)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
             loss_dict = model(images, targets)
             loss = sum(loss for loss in loss_dict.values())
+            if n_gpu > 1:
+                loss = loss.mean()
             
             # Backprop
             optimizer.zero_grad()
@@ -98,12 +105,12 @@ def main(cfg):
         
         elapsed = time.time() - time_start
         
-        torch.save(model.state_dict(), f"pytorch_model-e{epoch}.bin")
+        torch.save(model.state_dict(), os.path.join(cfg.data.output_dir, f"pytorch_model-e{epoch}.bin"))
         prefix = f"[Epoch {epoch:2d} / {cfg.train.num_epochs:2d}]"
         logger.info(f"{prefix} Train mask-only loss: {train_loss_mask:7.3f}")
         logger.info(f"{prefix} Train loss: {train_loss:7.3f}. [{elapsed:.0f} secs]")
 
-    ds_test = CellTestDataset(cfg.data.test_path, transforms=get_transform(train=False))
+    ds_test = CellTestDataset(cfg.data.test_path, transforms=get_transform(train=False, cfg=cfg), cfg=cfg)
 
     model.eval()
 
@@ -112,7 +119,7 @@ def main(cfg):
         img = sample['image']
         image_id = sample['image_id']
         with torch.no_grad():
-            result = model([img.to(DEVICE)])[0]
+            result = model([img.to(device)])[0]
         
         previous_masks = []
         for i, mask in enumerate(result["masks"]):
@@ -137,6 +144,13 @@ def main(cfg):
 
     df_sub = pd.DataFrame(submission, columns=['id', 'predicted'])
     df_sub.to_csv(os.path.join(cfg.data.output_dir, "submission.csv"), index=False)
+
+    writer = MlflowWriter("sartorisu")
+    writer.log_params_from_omegaconf_dict(cfg)
+    writer.log_artifact(os.path.join(os.getcwd(), '.hydra/config.yaml'))
+    writer.log_artifact(os.path.join(os.getcwd(), '.hydra/hydra.yaml'))
+    writer.log_artifact(os.path.join(os.getcwd(), '.hydra/overrides.yaml'))
+    writer.log_artifact(os.path.join(os.getcwd(), 'main.log'))
 
 if __name__ == "__main__":
     main()

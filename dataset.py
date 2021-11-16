@@ -11,18 +11,20 @@ import numpy as np
 from utils import rle_decode
 
 class CellDataset(Dataset):
-    def __init__(self, image_dir, df, transforms=None, resize=False):
+    def __init__(self, image_dir, df, transforms=None, resize=False, cfg=None):
         self.transforms = transforms
         self.image_dir = image_dir
         self.df = df
         
+        self.ori_height = cfg.data.height
+        self.ori_width = cfg.data.width
         self.should_resize = resize is not False
         if self.should_resize:
-            self.height = int(HEIGHT * resize)
-            self.width = int(WIDTH * resize)
+            self.height = int(cfg.data.height * resize)
+            self.width = int(cfg.data.height * resize)
         else:
-            self.height = HEIGHT
-            self.width = WIDTH
+            self.height = cfg.data.height
+            self.width = cfg.data.height
         
         self.image_info = collections.defaultdict(dict)
         temp_df = self.df.groupby('id')['annotation'].agg(lambda x: list(x)).reset_index()
@@ -58,7 +60,7 @@ class CellDataset(Dataset):
         boxes = []
         
         for i, annotation in enumerate(info['annotations']):
-            a_mask = rle_decode(annotation, (HEIGHT, WIDTH))
+            a_mask = rle_decode(annotation, (self.ori_height, self.ori_width))
             a_mask = Image.fromarray(a_mask)
             
             if self.should_resize:
@@ -154,8 +156,11 @@ class HorizontalFlip:
         return image, target
 
 class Normalize:
+    def __init__(self, cfg):
+        self.resnet_mean = cfg.data.resnet_mean
+        self.resnet_std = cfg.data.resnet_std
     def __call__(self, image, target):
-        image = F.normalize(image, RESNET_MEAN, RESNET_STD)
+        image = F.normalize(image, self.resnet_mean, self.resnet_std)
         return image, target
 
 class ToTensor:
@@ -164,10 +169,11 @@ class ToTensor:
         return image, target
     
 
-def get_transform(train):
+def get_transform(train, cfg):
+    
     transforms = [ToTensor()]
-    if NORMALIZE:
-        transforms.append(Normalize())
+    if cfg.data.normalize:
+        transforms.append(Normalize(cfg))
     
     # Data augmentation for train
     if train: 
