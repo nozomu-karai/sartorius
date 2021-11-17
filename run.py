@@ -59,6 +59,12 @@ def main(cfg):
     # replace the pre-trained head with a new one
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, cfg.model.num_classes)
 
+    # now get the number of input features for the mask classifier
+    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    hidden_layer = 256
+    # and replace the mask predictor with a new one
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, hidden_layer, cfg.model.num_classes)
+
     model.to(device)
     if n_gpu > 1:
         model = torch.nn.DataParallel(model)
@@ -82,7 +88,7 @@ def main(cfg):
         loss_mask_accum = 0.0
 
         train_bar = tqdm(dl_train)
-        for batch_idx, (images, targets) in enumerate(train_bar):
+        for batch_idx, (images, targets) in enumerate(train_bar, 1):
         
             # Predict
             images = list(image.to(device) for image in images)
