@@ -23,3 +23,5 @@ test:
   test: False
   min_score: 0.59
   mask_threshold: 0.5
+do_train: False
+do_eval: False

@@ -54,7 +54,11 @@ def main(cfg):
     if not os.path.exists(cfg.data.output_dir):
         os.makedirs(cfg.data.output_dir)
     fix_all_seeds(2021)
-    fh = FileHandler(os.path.join(cfg.data.output_dir, "run.log"), 'w')
+
+    if cfg.do_train:
+        fh = FileHandler(os.path.join(cfg.data.output_dir, "train.log"), 'w')
+    if cfg.do_eval:
+        fh = FileHandler(os.path.join(cfg.data.output_dir, "eval.log"), 'w')
     fh.setLevel(INFO)
     fh.setFormatter(fmr)
     logger.addHandler(fh)
@@ -103,108 +107,116 @@ def main(cfg):
     for param in model.parameters():
         param.requires_grad = True
 
-    params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=cfg.train.learning_rate, momentum=cfg.train.momentum, weight_decay=cfg.train.weight_decay)
+    if cfg.do_train:
+        params = [p for p in model.parameters() if p.requires_grad]
+        optimizer = torch.optim.SGD(params, lr=cfg.train.learning_rate, momentum=cfg.train.momentum, weight_decay=cfg.train.weight_decay)
 
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
-    logger.info("*****Training*****")
-    best_score = None
-    for epoch in range(1, cfg.train.num_epochs + 1):
-        model.train()
-        logger.info(f"Starting epoch {epoch} of {cfg.train.num_epochs}")
-        
-        time_start = time.time()
-        loss_accum = 0.0
-        loss_mask_accum = 0.0
-
-        train_bar = tqdm(dl_train)
-        for batch_idx, (images, targets) in enumerate(train_bar, 1):
-        
-            # Predict
-            images = list(image.to(device) for image in images)
-            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-
-            loss_dict = model(images, targets)
-            loss = sum(loss for loss in loss_dict.values())
-            if n_gpu > 1:
-                loss = loss.mean()
+        logger.info("*****Training*****")
+        best_score = None
+        for epoch in range(1, cfg.train.num_epochs + 1):
+            model.train()
+            logger.info(f"Starting epoch {epoch} of {cfg.train.num_epochs}")
             
-            # Backprop
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            # Logging
-            loss_mask = loss_dict['loss_mask'].item()
-            loss_accum += loss.item()
-            loss_mask_accum += loss_mask
+            time_start = time.time()
+            loss_accum = 0.0
+            loss_mask_accum = 0.0
 
-            train_bar.set_description(f"[Epoch {epoch:2d} / {cfg.train.num_epochs:2d}] Batch train loss: {loss.item():7.3f}. Mask-only loss: {loss_mask:7.3f}")
-        
-        if cfg.train.use_scheduler:
-            lr_scheduler.step()
-        
-        # Train losses
-        train_loss = loss_accum / n_batches
-        train_loss_mask = loss_mask_accum / n_batches
-        
-        elapsed = time.time() - time_start
+            train_bar = tqdm(dl_train)
+            for batch_idx, (images, targets) in enumerate(train_bar, 1):
             
-        prefix = f"[Epoch {epoch:2d} / {cfg.train.num_epochs:2d}]"
-        logger.info(f"{prefix} Train mask-only loss: {train_loss_mask:7.3f}")
-        logger.info(f"{prefix} Train loss: {train_loss:7.3f}. [{elapsed:.0f} secs]")
+                # Predict
+                images = list(image.to(device) for image in images)
+                targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
+                loss_dict = model(images, targets)
+                loss = sum(loss for loss in loss_dict.values())
+                if n_gpu > 1:
+                    loss = loss.mean()
+                
+                # Backprop
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                # Logging
+                loss_mask = loss_dict['loss_mask'].item()
+                loss_accum += loss.item()
+                loss_mask_accum += loss_mask
+
+                train_bar.set_description(f"[Epoch {epoch:2d} / {cfg.train.num_epochs:2d}] Batch train loss: {loss.item():7.3f}. Mask-only loss: {loss_mask:7.3f}")
+            
+            if cfg.train.use_scheduler:
+                lr_scheduler.step()
+            
+            # Train losses
+            train_loss = loss_accum / n_batches
+            train_loss_mask = loss_mask_accum / n_batches
+            
+            elapsed = time.time() - time_start
+                
+            prefix = f"[Epoch {epoch:2d} / {cfg.train.num_epochs:2d}]"
+            logger.info(f"{prefix} Train mask-only loss: {train_loss_mask:7.3f}")
+            logger.info(f"{prefix} Train loss: {train_loss:7.3f}. [{elapsed:.0f} secs]")
+
+            score = evaluate(cfg, model, ds_valid, device)
+            logger.info(f"valid IoU score: {score}")
+            if (best_score is None) or score > best_score: 
+                logger.info(f"best model saved [pytorch_model-e{epoch}.bin], IoU score: {score}")
+                model_to_save = model.module if hasattr(model, 'module') else model
+                torch.save(model_to_save.state_dict(), os.path.join(cfg.data.output_dir, "pytorch_model-best.bin"))
+                best_score = score
+
+        ds_test = CellTestDataset(cfg.data.test_path, transforms=get_transform(train=False, cfg=cfg))
+
+        model.eval()
+
+        logger.info("*****Prediction*****")
+        submission = []
+        for sample in ds_test:
+            img = sample['image']
+            image_id = sample['image_id']
+            with torch.no_grad():
+                result = model([img.to(device)])[0]
+            
+            previous_masks = []
+            for i, mask in enumerate(result["masks"]):
+                
+                # Filter-out low-scoring results. Not tried yet.
+                score = result["scores"][i].cpu().item()
+                if score < cfg.test.min_score:
+                    continue
+                
+                mask = mask.cpu().numpy()
+                # Keep only highly likely pixels
+                binary_mask = mask > cfg.test.mask_threshold
+                binary_mask = remove_overlapping_pixels(binary_mask, previous_masks)
+                previous_masks.append(binary_mask)
+                rle = rle_encoding(binary_mask)
+                submission.append((image_id, rle))
+            
+            # Add empty prediction if no RLE was generated for this image
+            all_images_ids = [image_id for image_id, rle in submission]
+            if image_id not in all_images_ids:
+                submission.append((image_id, ""))
+
+        df_sub = pd.DataFrame(submission, columns=['id', 'predicted'])
+        df_sub.to_csv(os.path.join(cfg.data.output_dir, "submission.csv"), index=False)
+
+        writer = MlflowWriter("sartorisu")
+        writer.log_params_from_omegaconf_dict(cfg)
+        writer.log_artifact(os.path.join(os.getcwd(), '.hydra/config.yaml'))
+        writer.log_artifact(os.path.join(os.getcwd(), '.hydra/hydra.yaml'))
+        writer.log_artifact(os.path.join(os.getcwd(), '.hydra/overrides.yaml'))
+        writer.log_artifact(os.path.join(os.getcwd(), 'run.log'))
+
+    if cfg.do_eval:
+        param = torch.load(os.path.join(cfg.data.output_dir, "pytorch_model-best.bin"))
+        model.load_state_dict(param)
+        logger.info(f"model weight loaded from [pytorch_model-e1.bin]")
         score = evaluate(cfg, model, ds_valid, device)
-        logger.info(f"valid score: {score}")
-        if (best_score is None) or score > best_score: 
-            logger.info(f"best model saved [pytorch_model-e{epoch}.bin], score: {score}")
-            model_to_save = model.module if hasattr(model, 'module') else model
-            torch.save(model_to_save.state_dict(), os.path.join(cfg.data.output_dir, f"pytorch_model-e{epoch}.bin"))
-            best_score = score
-
-    ds_test = CellTestDataset(cfg.data.test_path, transforms=get_transform(train=False, cfg=cfg))
-
-    model.eval()
-
-    logger.info("*****Prediction*****")
-    submission = []
-    for sample in ds_test:
-        img = sample['image']
-        image_id = sample['image_id']
-        with torch.no_grad():
-            result = model([img.to(device)])[0]
-        
-        previous_masks = []
-        for i, mask in enumerate(result["masks"]):
-            
-            # Filter-out low-scoring results. Not tried yet.
-            score = result["scores"][i].cpu().item()
-            if score < cfg.test.min_score:
-                continue
-            
-            mask = mask.cpu().numpy()
-            # Keep only highly likely pixels
-            binary_mask = mask > cfg.test.mask_threshold
-            binary_mask = remove_overlapping_pixels(binary_mask, previous_masks)
-            previous_masks.append(binary_mask)
-            rle = rle_encoding(binary_mask)
-            submission.append((image_id, rle))
-        
-        # Add empty prediction if no RLE was generated for this image
-        all_images_ids = [image_id for image_id, rle in submission]
-        if image_id not in all_images_ids:
-            submission.append((image_id, ""))
-
-    df_sub = pd.DataFrame(submission, columns=['id', 'predicted'])
-    df_sub.to_csv(os.path.join(cfg.data.output_dir, "submission.csv"), index=False)
-
-    writer = MlflowWriter("sartorisu")
-    writer.log_params_from_omegaconf_dict(cfg)
-    writer.log_artifact(os.path.join(os.getcwd(), '.hydra/config.yaml'))
-    writer.log_artifact(os.path.join(os.getcwd(), '.hydra/hydra.yaml'))
-    writer.log_artifact(os.path.join(os.getcwd(), '.hydra/overrides.yaml'))
-    writer.log_artifact(os.path.join(os.getcwd(), 'run.log'))
+        logger.info(f"valid IoU score: {score}")
 
 if __name__ == "__main__":
     main()
