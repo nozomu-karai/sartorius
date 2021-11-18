@@ -1,19 +1,20 @@
 data:
   output_dir: ???
-  train_csv: "../data/sartorius-cell-instance-segmentation/train.csv"
-  train_path: "../data/sartorius-cell-instance-segmentation/train"
-  test_path: "../data/sartorius-cell-instance-segmentation/test"
+  train_csv: "../data/train.csv"
+  train_path: "../data/train"
+  test_path: "../data/test"
   width: 704
   height: 520
   normalize: False
   resnet_mean: (0.485, 0.456, 0.406)
   resnet_std: (0.229, 0.224, 0.225)
+  val_ratio: 0.1
 model:
   box_detections_per_img: 539
   num_classes: 2
 train:
   batch_size: 2
-  num_epochs: 8
+  num_epochs: 10
   learning_rate: 0.001
   momentum: 0.9
   weight_decay: 0.0005
