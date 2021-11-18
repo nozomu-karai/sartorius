@@ -161,6 +161,7 @@ def main(cfg):
             logger.info(f"best model saved [pytorch_model-e{epoch}.bin], score: {score}")
             model_to_save = model.module if hasattr(model, 'module') else model
             torch.save(model_to_save.state_dict(), os.path.join(cfg.data.output_dir, f"pytorch_model-e{epoch}.bin"))
+            best_score = score
 
     ds_test = CellTestDataset(cfg.data.test_path, transforms=get_transform(train=False, cfg=cfg))
 
