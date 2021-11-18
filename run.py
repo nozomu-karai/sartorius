@@ -26,7 +26,6 @@ import mlflow
 import warnings
 warnings.filterwarnings('ignore')
 logger = getLogger(__name__)
-logger.setLevel(DEBUG)
 fmr = Formatter("[%(levelname)s] %(asctime)s >>\t%(message)s")
 ch = StreamHandler()
 ch.setLevel(INFO)
