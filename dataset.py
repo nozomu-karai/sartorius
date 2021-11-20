@@ -15,7 +15,7 @@ class CellDataset(Dataset):
         self.transforms = transforms
         self.image_dir = image_dir
         self.df = df
-        
+
         self.ori_height = cfg.data.height
         self.ori_width = cfg.data.width
         self.should_resize = resize is not False
@@ -25,7 +25,7 @@ class CellDataset(Dataset):
         else:
             self.height = cfg.data.height
             self.width = cfg.data.width
-        
+
         self.image_info = collections.defaultdict(dict)
         temp_df = self.df.groupby('id')['annotation'].agg(lambda x: list(x)).reset_index()
         for index, row in temp_df.iterrows():
@@ -34,7 +34,7 @@ class CellDataset(Dataset):
                     'image_path': os.path.join(self.image_dir, row['id'] + '.png'),
                     'annotations': row["annotation"]
                     }
-    
+
     def get_box(self, a_mask):
         ''' Get the bounding box of a given mask '''
         pos = np.where(a_mask)
@@ -46,10 +46,9 @@ class CellDataset(Dataset):
 
     def __getitem__(self, idx):
         ''' Get the image and the target'''
-        
         img_path = self.image_info[idx]["image_path"]
         img = Image.open(img_path).convert("RGB")
-        
+
         if self.should_resize:
             img = img.resize((self.width, self.height), resample=Image.BILINEAR)
 
@@ -58,22 +57,22 @@ class CellDataset(Dataset):
         n_objects = len(info['annotations'])
         masks = np.zeros((len(info['annotations']), self.height, self.width), dtype=np.uint8)
         boxes = []
-        
+
         for i, annotation in enumerate(info['annotations']):
             a_mask = rle_decode(annotation, (self.ori_height, self.ori_width))
             a_mask = Image.fromarray(a_mask)
-            
+
             if self.should_resize:
                 a_mask = a_mask.resize((self.width, self.height), resample=Image.BILINEAR)
-            
+
             a_mask = np.array(a_mask) > 0
             masks[i, :, :] = a_mask
-            
+
             boxes.append(self.get_box(a_mask))
 
         # dummy labels
         labels = [1 for _ in range(n_objects)]
-        
+
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         labels = torch.as_tensor(labels, dtype=torch.int64)
         masks = torch.as_tensor(masks, dtype=torch.uint8)
@@ -105,7 +104,7 @@ class CellTestDataset(Dataset):
         self.transforms = transforms
         self.image_dir = image_dir
         self.image_ids = [f[:-4]for f in os.listdir(self.image_dir)]
-    
+
     def __getitem__(self, idx):
         image_id = self.image_ids[idx]
         image_path = os.path.join(self.image_dir, image_id + '.png')
@@ -167,16 +166,16 @@ class ToTensor:
     def __call__(self, image, target):
         image = F.to_tensor(image)
         return image, target
-    
+
 
 def get_transform(train, cfg):
-    
+
     transforms = [ToTensor()]
     if cfg.data.normalize:
         transforms.append(Normalize(cfg))
-    
+
     # Data augmentation for train
-    if train: 
+    if train:
         transforms.append(HorizontalFlip(0.5))
         transforms.append(VerticalFlip(0.5))
 

@@ -35,7 +35,7 @@ def evaluate(cfg, model, ds, device):
         img, targets = ds[i]
         with torch.no_grad():
             result = model([img.to(device)])[0]
-            
+
         masks = combine_masks(cfg, targets['masks'], 0.5)
         labels = pd.Series(result['labels'].cpu().numpy()).value_counts()
 
@@ -82,12 +82,12 @@ def main(cfg):
     n_batches = len(dl_train)
     height = ds_train.height
     width = ds_train.width
-        
+
     logger.info(f"step_size: {n_batches}")
     logger.info(f"[Train]  # of picture: {len(df_images_train)}, # of instance: {len(df_train)}")
     logger.info(f"[Valid]  # of picture: {len(df_images_val)}, # of instance: {len(df_valid)}")
     logger.info(f"width: {width}, height: {height}")
-    
+
     model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True, box_detections_per_img=cfg.model.box_detections_per_img)
     # get the number of input features for the classifier
     in_features = model.roi_heads.box_predictor.cls_score.in_features
@@ -118,14 +118,14 @@ def main(cfg):
         for epoch in range(1, cfg.train.num_epochs + 1):
             model.train()
             logger.info(f"Starting epoch {epoch} of {cfg.train.num_epochs}")
-            
+
             time_start = time.time()
             loss_accum = 0.0
             loss_mask_accum = 0.0
 
             train_bar = tqdm(dl_train)
             for batch_idx, (images, targets) in enumerate(train_bar, 1):
-            
+
                 # Predict
                 images = list(image.to(device) for image in images)
                 targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
@@ -134,28 +134,28 @@ def main(cfg):
                 loss = sum(loss for loss in loss_dict.values())
                 if n_gpu > 1:
                     loss = loss.mean()
-                
+
                 # Backprop
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                
+
                 # Logging
                 loss_mask = loss_dict['loss_mask'].item()
                 loss_accum += loss.item()
                 loss_mask_accum += loss_mask
 
                 train_bar.set_description(f"[Epoch {epoch:2d} / {cfg.train.num_epochs:2d}] Batch train loss: {loss.item():7.3f}. Mask-only loss: {loss_mask:7.3f}")
-            
+
             if cfg.train.use_scheduler:
                 lr_scheduler.step()
-            
+
             # Train losses
             train_loss = loss_accum / n_batches
             train_loss_mask = loss_mask_accum / n_batches
-            
+
             elapsed = time.time() - time_start
-                
+
             prefix = f"[Epoch {epoch:2d} / {cfg.train.num_epochs:2d}]"
             logger.info(f"{prefix} Train mask-only loss: {train_loss_mask:7.3f}")
             logger.info(f"{prefix} Train loss: {train_loss:7.3f}. [{elapsed:.0f} secs]")
@@ -179,15 +179,15 @@ def main(cfg):
             image_id = sample['image_id']
             with torch.no_grad():
                 result = model([img.to(device)])[0]
-            
+
             previous_masks = []
             for i, mask in enumerate(result["masks"]):
-                
+
                 # Filter-out low-scoring results. Not tried yet.
                 score = result["scores"][i].cpu().item()
                 if score < cfg.test.min_score:
                     continue
-                
+
                 mask = mask.cpu().numpy()
                 # Keep only highly likely pixels
                 binary_mask = mask > cfg.test.mask_threshold
@@ -195,7 +195,7 @@ def main(cfg):
                 previous_masks.append(binary_mask)
                 rle = rle_encoding(binary_mask)
                 submission.append((image_id, rle))
-            
+
             # Add empty prediction if no RLE was generated for this image
             all_images_ids = [image_id for image_id, rle in submission]
             if image_id not in all_images_ids:

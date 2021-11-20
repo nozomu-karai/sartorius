@@ -16,7 +16,7 @@ def fix_all_seeds(seed):
 def rle_decode(mask_rle, shape, color=1):
     '''
     mask_rle: run-length as string formated (start length)
-    shape: (height,width) of array to return 
+    shape: (height,width) of array to return
     Returns numpy array, 1 - mask, 0 - background
     '''
     s = mask_rle.split()
@@ -97,7 +97,7 @@ def get_filtered_masks(cfg, pred):
     """
     filter masks using MIN_SCORE for mask and MAX_THRESHOLD for pixels
     """
-    use_masks = []   
+    use_masks = []
     for i, mask in enumerate(pred["masks"]):
 
         # Filter-out low-scoring results. Not tried yet.
@@ -148,8 +148,8 @@ def compute_iou(labels, y_pred, verbose=0):
     union = union[1:, 1:]
     union[union == 0] = 1e-9
     iou = intersection / union
-    
-    return iou  
+
+    return iou
 
 def precision_at(threshold, iou):
     """
