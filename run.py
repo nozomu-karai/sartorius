@@ -155,6 +155,7 @@ def main(cfg):
         logger.info(f"{prefix} Train mask-only loss: {train_loss_mask:7.3f}")
         logger.info(f"{prefix} Train loss: {train_loss:7.3f}. [{elapsed:.0f} secs]")
 
+        #validation evaluate
         score = evaluate(cfg, model, ds_valid, device)
         logger.info(f"valid score: {score}")
         if (best_score is None) or score > best_score: 
