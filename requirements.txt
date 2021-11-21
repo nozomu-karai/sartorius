@@ -1,9 +1,9 @@
-numpy 
+numpy
 pandas
 torch
 torchvision
 hydra-core
-mlflow 
+mlflow
 jupyter
 scikit-learn
 tqdm

@@ -19,6 +19,6 @@ pip install -r requirements.txt
 ### Executing program
 
 ```
-python run.py data.output_dir={}
+python run.py data.output_dir={} [do_train=True] [do_eval=True]
 ```
 
